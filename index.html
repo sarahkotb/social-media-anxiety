@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Social Media &amp; Anxiety — QAMO 4651</title>
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="titlebar">
+  <h1>Social Media &amp; Anxiety</h1>
+  <p class="sub">Simple regression &middot; QAMO 4651</p>
+</div>
+
+<div class="wrap" style="max-width:540px">
+
+  <!-- Shown when the instructor hasn't opened the form (or has closed it) -->
+  <div class="card" id="closedCard" style="text-align:center">
+    <h2 style="justify-content:center">⏸ Not live</h2>
+    <p class="note" id="closedMsg">Connecting…</p>
+  </div>
+
+  <!-- The submission form (only while the instructor has it open) -->
+  <div class="card" id="formCard" style="display:none">
+    <h2 id="formTitle">Two quick questions</h2>
+    <p class="pill" id="sectionBanner" style="margin:0 0 12px">Section &mdash;</p>
+
+    <div class="banner anon">🔒 <strong>This is anonymous.</strong> We don't collect your name or
+      any identifying information — just the two numbers below.</div>
+
+    <div class="field">
+      <label for="minutes"><strong>How much time do you spend on your favorite social media app each day?</strong></label>
+      <input type="number" id="minutes" min="0" max="1440" step="1" inputmode="numeric" placeholder="e.g. 95" style="width:100%">
+      <p class="hint">In <strong>minutes</strong> per day (2 hours = 120). Check your phone's daily average:
+        iPhone: Settings &rarr; Screen Time &rarr; See All App Activity. Android: Settings &rarr; Digital Wellbeing.</p>
+    </div>
+
+    <div class="field">
+      <label style="margin-bottom:8px"><strong>How anxious do you think you generally are?</strong></label>
+      <div class="scale10" id="anxiety"></div>
+      <div class="scale10-ends"><span>1 = not at all anxious</span><span>10 = extremely anxious</span></div>
+    </div>
+
+    <button class="btn" id="submitBtn" style="width:100%; padding:13px; margin-top:4px">Submit</button>
+    <p id="msg" class="note" style="margin-top:12px; min-height:1.2em"></p>
+  </div>
+
+  <!-- Confirmation after a successful submission -->
+  <div class="card" id="thanksCard" style="display:none; text-align:center">
+    <h2 style="justify-content:center">✅ You're in!</h2>
+    <p class="note">Thanks — your point is on the scatter plot now.</p>
+    <p class="pill" id="liveCount">&hellip;</p>
+    <p class="note" style="margin-top:16px">Look up at the projector. 📈</p>
+    <button class="btn ghost" id="editBtn" style="margin-top:6px">✏️ Edit my answers</button>
+    <p class="note" style="font-size:.82rem; margin-top:14px">One entry per device — editing updates your existing answer.</p>
+  </div>
+
+</div>
+
+<script src="config.js"></script>
+<script type="module">
+import * as Core from "./core.js";
+
+const cfg = window.APP_CONFIG;
+const $ = id => document.getElementById(id);
+const show = el => el.style.display = "block";
+const hide = el => el.style.display = "none";
+const ACT = cfg.activity || "activity";
+const LO = cfg.anxietyMin ?? 1, HI = cfg.anxietyMax ?? 10;
+
+// Build the 1–10 anxiety picker
+const scaleBox = $("anxiety");
+for (let v = LO; v <= HI; v++){
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "opt10"; b.textContent = v; b.dataset.value = v;
+  b.addEventListener("click", () => setAnxiety(v));
+  scaleBox.appendChild(b);
+}
+let anxiety = null;
+function setAnxiety(v){
+  anxiety = v;
+  [...scaleBox.children].forEach(c => c.classList.toggle("sel", Number(c.dataset.value) === v));
+}
+
+if (!cfg || cfg.firebase.apiKey === "PASTE_ME"){
+  $("closedMsg").textContent = "⚠️ This page isn't configured yet (config.js). Tell your instructor.";
+}
+
+let db, auth, uid = null;
+try { const f = Core.initFirebase(cfg); db = f.db; auth = f.auth; } catch (e) {}
+
+let session = null;       // { open, section, day } from the instructor
+let myAnswer = null;      // this device's existing answers (for editing)
+let editing = false;
+let countUnsub = null;
+
+function render(){
+  const open = !!(session && session.open === true);
+  if (!open){
+    hide($("formCard")); hide($("thanksCard")); show($("closedCard"));
+    $("closedMsg").textContent = session ? "This is not live at the moment." : "Connecting…";
+    return;
+  }
+  hide($("closedCard"));
+  $("sectionBanner").textContent = "Section " + session.section;
+  if (myAnswer && !editing){
+    hide($("formCard")); show($("thanksCard"));
+    if (!countUnsub) startLiveCount();
+  } else {
+    show($("formCard")); hide($("thanksCard"));
+  }
+}
+
+// Sign in anonymously so each device owns (and can edit) exactly one answer.
+if (auth){
+  Core.signInDevice(auth).then(async u => {
+    uid = u;
+    const data = await Core.loadMyResponse(db, ACT, uid);
+    myAnswer = data ? data.answers : null;
+    render();
+  }).catch(e => {
+    $("closedMsg").textContent = "⚠️ Couldn't connect (anonymous sign-in is off). Tell your instructor.";
+  });
+}
+
+// Watch the instructor's open/close switch in real time
+if (db){
+  Core.watchControl(db, ACT, s => { session = s; render(); });
+}
+
+$("editBtn").addEventListener("click", () => {
+  if (myAnswer){
+    $("minutes").value = myAnswer.minutes ?? "";
+    setAnxiety(myAnswer.anxiety ?? null);
+  }
+  $("formTitle").textContent = "Edit your answers";
+  editing = true;
+  render();
+});
+
+$("submitBtn").addEventListener("click", async () => {
+  const msg = $("msg");
+  if (!session || session.open !== true){ render(); return; }
+  if (!uid){ msg.textContent = "Still connecting… try again in a second."; return; }
+
+  const raw = $("minutes").value.trim();
+  const minutes = Number(raw);
+  if (raw === "" || !Number.isFinite(minutes)){
+    msg.textContent = "Please enter your daily minutes on your favorite app."; return; }
+  if (minutes < 0 || minutes > (cfg.maxMinutes || 1440)){
+    msg.textContent = `Please enter minutes between 0 and ${cfg.maxMinutes || 1440}.`; return; }
+  if (anxiety == null){ msg.textContent = `Please pick how anxious you are (${LO}–${HI}).`; return; }
+
+  $("submitBtn").disabled = true;
+  msg.textContent = "Submitting…";
+  const answers = { minutes: Math.round(minutes), anxiety };
+  try {
+    await Core.saveMyResponse(db, { activity: ACT, uid, section: session.section, day: session.day, answers });
+    myAnswer = answers;
+    editing = false;
+    msg.textContent = "";
+    $("formTitle").textContent = "Two quick questions";
+    startLiveCount();
+    render();
+  } catch (e) {
+    msg.textContent = "Hmm, that didn't go through. The form may have just closed — check the projector.";
+  } finally {
+    $("submitBtn").disabled = false;
+  }
+});
+
+function startLiveCount(){
+  if (countUnsub) countUnsub();
+  countUnsub = Core.watchResponses(db, ACT, recs => {
+    const n = recs.filter(r => r.section === session.section).length;
+    $("liveCount").textContent = `${n} student${n===1?"":"s"} in section ${session.section} so far`;
+  });
+}
+</script>
+</body>
+</html>
