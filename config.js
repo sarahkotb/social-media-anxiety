@@ -32,7 +32,7 @@ window.APP_CONFIG = {
   xUnit: "hours",
 
   // -------- Instructor page passcode (SHA-256 hash, NOT the passcode itself) -----
-  // Current passcode: Scrite1  (same as Meet the Class)
+  // Same passcode as Meet the Class.
   // To change it, tell Claude the new passcode, or run:
   //   echo -n "YOUR PASSCODE" | shasum -a 256
   instructorPasscodeHash: "b7751d67986ca67b3984d2107797a55373b0bfe8ede2710ed986f58da7dd7294"

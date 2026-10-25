@@ -13,7 +13,7 @@ numbers) and draws the fitted line.
 | Page | Who | What |
 |---|---|---|
 | `index.html` | Students (phones, via QR) | Minutes per day + a 1–10 anxiety picker |
-| `instructor.html` | You (projector, passcode **`Scrite1`**) | Open/close form, scatter plot, β̂₀ / β̂₁, PDF + CSV export |
+| `instructor.html` | You (projector, passcode-protected) | Open/close form, scatter plot, β̂₀ / β̂₁, PDF + CSV export |
 
 Built from the same template as *Meet the Class* (see `../first-day-survey/TEMPLATE.md`):
 same Firebase project, same rules, same anonymous sign-in. Its data is kept separate
